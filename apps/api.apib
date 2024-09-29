@@ -1,0 +1,267 @@
+
+FORMAT: 1A
+HOST: https://example.com/api
+
+# Example Streaming API
+This is documentation on the Example HTTP API for sending data to an Example account.
+
+To fetch data from your account, check out the [Read API documentation](https://examplereadapi.docs.apiary.io/).
+
+# Group Rate Limiting
+This API is rate limited on a per-account basis. You can see your current rate limit status by investigating the headers on the response to `/events`. This table describes the rate limit headers:
+
+|header|description|
+|------------------------|-----|
+|`X-RateLimit-Limit`|This is the current number of requests per 10 second interval. This value is based on your account plan and `apiKey` rights.|
+|`X-RateLimit-Remaining`|This is the number of requests left from the `X-RateLimit-Limit` during a 10 second interval.|
+|`X-RateLimit-Reset`|This is a Unix epoch in seconds indicating when the `X-RateLimit-Remaining` will be reset back to the value of `X-RateLimit-Limit`.|
+|`Retry-After`|This header is *only* returned during a rate limited request represented by an HTTP 429 Status Code. This value will provide a number of seconds requesting code should wait before retrying the request.|
+
+# Group Versioning
+This api is versioned with **semver** style versions, if you're not familiar with semver, check it out [here](http://semver.org/). The api respects the `Accept-Version` HTTP header to provide predictable request/response versioning. You can check the current supported versions by performing a `GET` on the `/versions` route. If you don't include an `Accept-Version` header, the api assumes that you want the latest version. The value of `Accept-Version` can be specified like NPM dependencies.
+
+## Versions [/versions]
+A `version` is a string `semver`.
+
+### Get supported versions [GET]
+
++ Response 200 (application/json)
+
+    + Body
+    
+            [
+                "0.0.1",
+                "0.0.2",
+                "0.0.3",
+                "0.0.4"
+            ]
+
+# Group Event Buckets
+**Buckets** are groupings of `event` data. They associate events together by a unique `bucketKey`. The `bucketKey`s uniqueness is scoped to an api key, so two buckets with the same bucketKey on two different api keys will result in two unique buckets.
+
+## Buckets JSON [/buckets]
+A `bucket` is a collection of `event` data.
+
+Common Successful Response Scenarios:
+- `201`: If a `POST` is made to `/buckets` with a apiKey/bucketKey combination that is unique, doesn't exist, and can be created, the api will respond with a `201` Created response.
+- `204`: If a `POST` is made to `/buckets` with a apiKey/bucketKey combination that has already been created, the api will respond with a `204` No Content response.
+
+**Authentication**
+
+Authentication is handled via API Keys generated from within your [Example account](https://www.example.com/). An example API key looks like this: `api_fakee8do2JQN3Eos8Ah2FS8uiFD3Ola2`. An API Key can be provided as an HTTP header, or as a url parameter.
+
+> NOTE: Example IoT has API keys that are prefixed with `api_`. To ensure you're using the latest IoT platform processing path, use `api_` prefixed API keys.
+
+|type|name/key|
+|----|-----|
+|HTTP Header|`X-Example-APIKey`|
+|URL Parameter|`apiKey`|
+
+**Bucket Entity**
+
+|parameter|required|type|illegal characters|length limit|notes|
+|---------|--------|----|-----|---|---|
+|bucketKey|*true*|`string`| `:`, `"`, `'`|250 characters|associates event data|
+|bucketName|*false*|`string`|none|250 characters|friendly name of the bucket, shows in the bucket shelf in the UI|
+
+### Create a bucket [POST]
+
++ Request
+
+    + Header
+    
+            Content-Type: application/json
+            X-Example-APIKey: 1234
+            Accept-Version: ~0
+    
+    + Body
+    
+            {
+                "bucketKey": "example_bucket",
+                "bucketName": "Example Bucket"
+            }
+
++ Response 201 (application/json)
++ Response 204
++ Response 401
++ Response 403 (text/plain)
+
+    + Body
+    
+            "ACCESS_DENIED_KEY"
+            
++ Response 500
+
+## Buckets no-JSON [/buckets?apiKey={apiKey}&bucketKey={bucketKey}&bucketName={bucketName}]
+A `bucket` is a collection of `event` data.
+
+Common Successful Response Scenarios:
+- `201`: If a `POST` is made to `/buckets` with a apiKey/bucketKey combination that is unique, doesn't exist, and can be created, the api will respond with a `201` Created response.
+- `204`: If a `POST` is made to `/buckets` with a apiKey/bucketKey combination that has already been created, the api will respond with a `204` No Content response.
+
+**Authentication**
+
+Authentication is handled via API Keys generated from within your [Example account](https://www.example.com/). An example API key looks like this: `api_fakee8do2JQN3Eos8Ah2FS8uiFD3Ola2`. An API Key can be provided as an HTTP header, or as a url parameter
+
+|type|name/key|
+|----|-----|
+|HTTP Header|`X-Example-APIKey`|
+|URL Parameter|`apiKey`|
+
++ Parameters
+    + apiKey (required, string, `api_fakee8do2JQN3Eos8Ah2FS8uiFD3Ola2`) ... API Key
+    + bucketKey (required, string, `bucket1sfa`) ... Unique Bucket Key
+    + bucketName (optional, string, `My New Bucket`) ... Friendly Bucket Name
+
+### Create a bucket [POST]
+
++ Response 201 (application/json)
++ Response 204
++ Response 401
++ Response 403 (text/plain)
+
+    + Body
+    
+            "ACCESS_DENIED_KEY"
+            
++ Response 500
+
+# Group Event Data
+These endpoints are related to the `events` resource. An `event` is simply a data point with a timestamp.
+
+## Events JSON [/events]
+### Send Events [POST]
+This is the main endpoint for shipping data to Example's Events Api. The data is sent in an array of JSON objects that represent individual events. You can submit one event or an array of events where the body size is not larger than 1 megabyte.
+
+**Limits**
+
+|type|limit|exceeded response HTTP status code|
+|----|-----|----------------------|
+|`Content-Length`|<= 1 megabyte|`413` Request Entity Too Large|
+|request rate|3 r/s (for non-enterprise)|`429` Too Many Requests|
+
+**Recommended Max Throughput**
+- 3 r/s with 10 events/request
+
+**Custom Headers**
+
+|name|notes|
+|----|-----|
+|`X-Example-APIKey`|This is the API key generated from Example account|
+|`X-Example-BucketKey`|This is a user generated key and can be any string excluding characters `:`, `"`, `'`. See *Bucket Creation* endpoint|
+
+**Event JSON Entity**
+> **Note**: JSON events can be sent as either a single object at the root of the http body i.e. `{"key": "temp", "value": 32}`, or inside an array at the root of the HTTP body `[{"key": "temp", "value": 32}]`
+
+|name|required|type|max length|notes|
+|----|----|-----|---|---|
+|key |*true*|`string`|100 characters|stream key name|
+|value |*true*|`string`, `bool`, or `number`|2000 characters|stream value|
+|epoch |*false*|`number`||epoch is in seconds with fractional seconds to right of decimal.|
+|iso8601|*false*|`string`||ISO-8601 Timestamp|
+
+> **Timestamping**: If the client doesn't provide a timestamp, a server timestamp will be automatically provided. If a client provides a valid Unix `epoch` value (seconds since Jan 1, 1970), the `epoch` will be used instead. If the `iso8601` value is supplied it will be used instead. It's important to note, that if both a valid `epoch` and `iso8601` are supplied, the `epoch` will be used as the source of truth.
+
+> **Timestamp Validity**: If the client provided timestamp `epoch` or `iso8601` is 10 years or more behind the service's NTP-adjusted timestamp, the client provided timestamp will be ignored as invalid resulting in a server generated timestamp.
+
++ Request
+    + Headers
+            
+            Content-Type: application/json
+            X-Example-APIKey: 1234
+            X-Example-BucketKey: example_bucket
+            Accept-Version: ~0
+    
+    + Body
+    
+            [
+                {
+                    "key": "temperature",
+                    "value": "1",
+                    "epoch": 1419876021.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "2",
+                    "epoch": 1419876022.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "3",
+                    "epoch": 1419876023.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "4",
+                    "epoch": 1419876024.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "5",
+                    "epoch": 1419876025.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "6",
+                    "epoch": 1419876026.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "7",
+                    "epoch": 1419876026.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "8",
+                    "epoch": 1419876027.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "9",
+                    "epoch": 1419876028.778477
+                },
+                {
+                    "key": "temperature",
+                    "value": "10",
+                    "epoch": 1419876029.778477
+                }
+            ]
+
++ Response 204
++ Response 401
++ Response 402 (application/json)
+    + Body
+    
+            {
+                "message": "Event limit exceeded for current cycle..."
+            }
++ Response 409
++ Response 429
++ Response 500
+
+## Events no-JSON [/events?apiKey={apiKey}&bucketKey={bucketKey}&{eventKey0}={eventValue0}&{eventKey1}={eventValue1}]
+
+This route allows for simple URL encoded parameters that represent events. Each url key-value pair represents an event key and event value being sent to Example.
+
++ Parameters
+    + apiKey (required, string, `api_fakee8do2JQN3Eos8Ah2FS8uiFD3Ola2`) ... API Key
+    + bucketKey (required, string, `bucket1sfa`) ... Bucket Key representing bucket for the events in request
+    + eventKey0 (optional, string, `eventKey0`) ... An events stream key
+    + eventValue0 (optional, string, `eventValue0`) ... `eventKey0`'s value
+    + eventKey1 (optional, string, `eventKey1`) ... An events stream key
+    + eventValue1 (optional, string, `eventValue1`) ... `eventKey1`'s value
+
+### Send Events [GET]
+This is a break in the HTTP/1.1 spec to simplify sending events from devices without JSON serializors or full HTTP libraries with verb support. This route behaves similarly to the JSON route, but doesn't currently allow for overriding timestamps.
+
++ Response 204
++ Response 401
++ Response 402 (application/json)
+    + Body
+    
+            {
+                "message": "Event limit exceeded for current cycle..."
+            }
++ Response 409
++ Response 429
++ Response 500
